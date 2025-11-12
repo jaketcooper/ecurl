@@ -1,0 +1,90 @@
+Description: <short summary of the patch>
+ TODO: Put a short summary on the line above and replace this paragraph
+ with a longer explanation of this change. Complete the meta-information
+ with other relevant fields (see below for details). To make it easier, the
+ information below has been extracted from the changelog. Adjust it or drop
+ it.
+ .
+ ecurl (1.0.0-2) kali-rolling; urgency=medium
+ .
+   * Add Debian README and bash completion; extend autopkgtests.
+Author: Jake Cooper <jaketcooper@users.noreply.github.com>
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout https://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: (upstream|backport|vendor|other), (<patch-url>|commit:<commit-id>)
+Bug: <upstream-bugtracker-url>
+Bug-Debian: https://bugs.debian.org/<bugnumber>
+Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
+Forwarded: (no|not-needed|<patch-forwarded-url>)
+Applied-Upstream: <version>, (<commit-url>|commit:<commid-id>)
+Reviewed-By: <name and email of someone who approved/reviewed the patch>
+Last-Update: 2025-11-12
+
+--- /dev/null
++++ ecurl-1.0.0/ecurl-proxy-env.patch
+@@ -0,0 +1,35 @@
++#!/bin/bash
++# Optional patch for ecurl to support proxy environment variables
++# This adds support for HTTP_PROXY, HTTPS_PROXY, and NO_PROXY environment variables
++
++# Apply this patch to ecurl to make it respect standard proxy environment variables
++# Usage: patch ecurl < ecurl-proxy-env.patch
++
++cat <<'PATCH'
++--- ecurl.orig	2025-11-12 18:00:00.000000000 +0000
+++++ ecurl	2025-11-12 18:30:00.000000000 +0000
++@@ -312,9 +312,23 @@
++   done
++   
++   # Proxy
+++  # Check for explicit proxy setting first
++   if [[ -n "$proxy" ]]; then
++     curl_cmd_array+=("-x" "$proxy")
++     [[ -n "$proxy_auth" ]] && curl_cmd_array+=("--proxy-user" "$proxy_auth")
+++  else
+++    # If no explicit proxy, check environment variables
+++    # Determine which proxy env var to use based on URL scheme
+++    if [[ "$url" =~ ^https:// ]]; then
+++      if [[ -n "${HTTPS_PROXY:-}" ]] || [[ -n "${https_proxy:-}" ]]; then
+++        curl_cmd_array+=("-x" "${HTTPS_PROXY:-${https_proxy}}")
+++      fi
+++    elif [[ "$url" =~ ^http:// ]]; then
+++      if [[ -n "${HTTP_PROXY:-}" ]] || [[ -n "${http_proxy:-}" ]]; then
+++        curl_cmd_array+=("-x" "${HTTP_PROXY:-${http_proxy}}")
+++      fi
+++    fi
+++    # Note: curl itself handles NO_PROXY, so we don't need to process it
++   fi
++   
++   # Cookies
++PATCH
+--- ecurl-1.0.0.orig/src/usr/bin/ecurl
++++ ecurl-1.0.0/src/usr/bin/ecurl
+@@ -312,9 +312,23 @@ build_curl_command() {
+   done
+   
+   # Proxy
++  # Check for explicit proxy setting first
+   if [[ -n "$proxy" ]]; then
+     curl_cmd_array+=("-x" "$proxy")
+     [[ -n "$proxy_auth" ]] && curl_cmd_array+=("--proxy-user" "$proxy_auth")
++  else
++    # If no explicit proxy, check environment variables
++    # Determine which proxy env var to use based on URL scheme
++    if [[ "$url" =~ ^https:// ]]; then
++      if [[ -n "${HTTPS_PROXY:-}" ]] || [[ -n "${https_proxy:-}" ]]; then
++        curl_cmd_array+=("-x" "${HTTPS_PROXY:-${https_proxy}}")
++      fi
++    elif [[ "$url" =~ ^http:// ]]; then
++      if [[ -n "${HTTP_PROXY:-}" ]] || [[ -n "${http_proxy:-}" ]]; then
++        curl_cmd_array+=("-x" "${HTTP_PROXY:-${http_proxy}}")
++      fi
++    fi
++    # Note: curl itself handles NO_PROXY, so we don't need to process it
+   fi
+   
+   # Cookies

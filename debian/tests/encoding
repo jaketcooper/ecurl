@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# URL encode: allow %20 or +
+out="$(ecurl -i "A B" -s -q --encode-type url | tr -d '\n')"
+[[ "$out" == "A%20B" || "$out" == "A+B" ]]
+
+# double encode should further encode the separator; accept either style
+out2="$(ecurl -i "A B" -s -q --encode-type double | tr -d '\n')"
+[[ "$out2" == "A%2520B" || "$out2" == "A%2BB" ]]
+
+# base64
+b64="$(ecurl -i "test" -s -q --encode-type base64 | tr -d '\n')"
+[[ "$b64" == "$(printf %s test | base64 -w0 2>/dev/null || printf %s test | base64 | tr -d '\n')" ]]
+
+# html
+html="$(ecurl -i "<b>hi</b>" -s -q --encode-type html | tr -d '\n')"
+grep -q '&lt;b&gt;hi&lt;/b&gt;' <<<"$html"
+
+# unicode encode (basic sanity: \uXXXX sequences appear)
+uni="$(ecurl -i "A" -s -q --encode-type unicode | tr -d '\n')"
+echo "$uni" | grep -q '^\\u0041$'

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PORT=18083
+TMPDIR=$(mktemp -d)
+cleanup(){ rm -rf "$TMPDIR"; }
+trap cleanup EXIT
+
+cat >"$TMPDIR/echo.py" <<'PY'
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json, sys
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type","application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps({"ok": True, "path": self.path}).encode("utf-8"))
+    do_POST = do_GET
+httpd = HTTPServer(('127.0.0.1', int(sys.argv[1])), H)
+httpd.serve_forever()
+PY
+
+python3 "$TMPDIR/echo.py" "$PORT" >"$TMPDIR/server.log" 2>&1 &
+PID=$!
+sleep 0.3
+
+REQ="$TMPDIR/req.json"
+TARGET="http://127.0.0.1:${PORT}/echo?arg="
+
+# Save a request - use -q to suppress messages
+ecurl -u "$TARGET" -i "saved" --save-req -q >/dev/null
+# The tool picked a default filename like ecurl_request_<ts>.req in CWD; find it
+REQFILE="$(ls -1t ecurl_request_*.req 2>/dev/null | head -n1 || true)"
+if [ -z "${REQFILE:-}" ]; then
+  echo "no request file saved" >&2
+  exit 1
+fi
+mv "$REQFILE" "$REQ"
+
+# Replay should succeed (200) - use -q for clean JSON
+ecurl --replay "$REQ" --json -q | jq -e '.response.status==200' >/dev/null
+kill "$PID" || true
+wait "$PID" 2>/dev/null || true

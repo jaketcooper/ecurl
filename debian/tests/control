@@ -1,0 +1,39 @@
+Tests: smoke
+Depends: @, bash
+Restrictions: allow-stderr
+
+Tests: edge
+Depends: @, bash
+Restrictions: allow-stderr
+
+Tests: encoding
+Depends: @, bash, perl, liburi-perl
+Restrictions: allow-stderr
+
+Tests: json-mode
+Depends: @, bash, jq
+Restrictions: allow-stderr
+
+Tests: http
+Depends: @, bash, python3, jq
+Restrictions: allow-stderr
+
+Tests: http-proxy
+Depends: @, bash, python3, jq, socat, netcat-openbsd
+Restrictions: allow-stderr
+
+Tests: https
+Depends: @, bash, python3, jq, openssl
+Restrictions: allow-stderr
+
+Tests: https-proxy
+Depends: @, bash, python3, jq, netcat-openbsd, openssl
+Restrictions: allow-stderr
+
+Tests: save-replay
+Depends: @, bash, jq
+Restrictions: allow-stderr
+
+Tests: zsh-completion
+Depends: @, zsh
+Restrictions: superficial

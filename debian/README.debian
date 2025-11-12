@@ -1,0 +1,46 @@
+ecurl for Debian/Kali
+=====================
+
+Overview
+--------
+ecurl is a Bash wrapper around curl that encodes payloads, manages sessions/
+cookies, and offers JSON output for tool chaining. It installs to /usr/bin/ecurl
+and its man page to /usr/share/man/man1/ecurl.1.gz.
+
+User data + logs
+----------------
+ecurl writes user-scoped state under $HOME:
+  ~/.ecurl_target     - saved target URL (when using --target)
+  ~/.ecurl_cookies    - default cookie jar (unless overridden)
+  ~/.ecurl_session.*  - per-session cookie jars (when using --session)
+  ~/.ecurl_history    - recent commands (redacts sensitive values)
+
+Security notes
+--------------
+- Intended strictly for authorized security testing.
+- JSON mode may print response bodies; take care when redirecting to logs.
+- Use --insecure only when you understand the risk.
+- Colors auto-disable when NO_COLOR is set or stdout is not a TTY.
+
+Useful environment knobs
+------------------------
+  NO_COLOR=1                disable ANSI colors
+  http_proxy/https_proxy    standard proxy variables (or use --proxy)
+  LC_ALL=C                  consistent sort/grep behavior in scripts
+
+Bug reporting
+-------------
+For Kali: open an issue/MR in the Kali packaging tracker referencing this source.
+For Debian-style bugs: include the output of:
+  ecurl --version
+  dpkg -l ecurl
+  uname -a
+and a minimal command line that reproduces the problem.
+
+Maintenance
+-----------
+- Packaging format: 3.0 (quilt); patches are managed via debian/patches.
+- Files installed from src/ by debhelper per debian/install.
+- Man page installed via debian/ecurl.manpages.
+- Bash completion installed to /usr/share/bash-completion/completions/ecurl.
+

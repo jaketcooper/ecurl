@@ -1,0 +1,1131 @@
+#!/bin/bash
+
+# ecurl - Encoded cURL for penetration testing
+# Version: 1.0.0
+# Author: jaketcooper
+# License: MIT
+
+set -o pipefail
+
+# Configuration files
+TARGET_FILE="$HOME/.ecurl_target"
+COOKIE_JAR="$HOME/.ecurl_cookies"
+SESSION_FILE="$HOME/.ecurl_session"
+HISTORY_FILE="$HOME/.ecurl_history"
+
+# Default values
+DEFAULT_TIMEOUT=30
+DEFAULT_USER_AGENT="ecurl/1.0 (Penetration Testing Tool)"
+
+# Colors for output (disable if not a TTY or if NO_COLOR is set)
+#if [[ -t 1 ]] && [[ -z "${NO_COLOR}" ]]; then
+#  RED="\033[0;31m"
+#  GREEN="\033[0;32m"
+#  YELLOW="\033[1;33m"
+#  BLUE="\033[0;34m"
+#  CYAN="\033[0;36m"
+#  MAGENTA="\033[0;35m"
+#  NC="\033[0m" # No Color
+#else
+  RED=''
+  GREEN=''
+  YELLOW=''
+  BLUE=''
+  CYAN=''
+  MAGENTA=''
+  NC=''
+#fi
+
+# Error codes
+readonly E_SUCCESS=0
+readonly E_GENERAL=1
+readonly E_MISSING_ARG=2
+readonly E_INVALID_ARG=3
+readonly E_MISSING_DEP=4
+readonly E_CURL_ERROR=5
+readonly E_FILE_ERROR=6
+
+# Global array for curl command (used to avoid eval)
+declare -a curl_cmd_array
+
+usage() {
+  cat <<EOM
+
+${CYAN}ecurl${NC} - Encoded cURL for penetration testing ${GREEN}v1.0.0${NC}
+
+${YELLOW}Usage:${NC} ecurl [OPTIONS]
+
+${YELLOW}Core Options:${NC}
+  -t, --target <URL>          Set persistent target URL
+  -u, --url <URL>             Set one-time target URL
+  -i, --injection <TEXT>      Injection payload to encode
+  -c, --count <N>             Number of encoding passes (default: 1)
+  
+${YELLOW}HTTP Options:${NC}
+  -X, --method <METHOD>       HTTP method (GET, POST, PUT, DELETE, etc.)
+  -d, --data <DATA>           POST/PUT data (can be used multiple times)
+  -H, --header <HEADER>       Custom header (can be used multiple times)
+  -A, --user-agent <STRING>   User-Agent string
+  --timeout <SECONDS>         Request timeout (default: ${DEFAULT_TIMEOUT})
+
+${YELLOW}Proxy & Security:${NC}
+  -p, --proxy <URL>           HTTP/HTTPS proxy (e.g., http://127.0.0.1:8080)
+  --proxy-auth <USER:PASS>   Proxy authentication
+  -k, --insecure              Skip SSL certificate verification
+  --cert <FILE>               Client certificate file
+  --key <FILE>                Client key file
+
+${YELLOW}Cookie & Session:${NC}
+  -b, --cookie <DATA>         Cookie data or file
+  -j, --cookie-jar <FILE>     Save cookies to file
+  --session <NAME>            Named session for cookie persistence
+  --clear-cookies             Clear stored cookies
+
+${YELLOW}Output Control:${NC}
+  -s, --show                  Show encoded payload without sending
+  -v, --verbose               Verbose output with request details
+  -q, --quiet                 Suppress non-essential output
+  -o, --output <FILE>         Save response to file
+  -f, --format <FORMAT>       Output format (raw, json, xml, headers)
+  --json                      JSON output for tool chaining
+  --follow                    Follow redirects (max 10)
+  --include-headers           Include response headers in output
+
+${YELLOW}Batch Testing:${NC}
+  --payload-file <FILE>       Test multiple payloads from file
+  --target-file <FILE>        Test multiple targets from file
+  --delay <SECONDS>           Delay between batch requests
+  --threads <N>               Parallel requests (default: 1)
+
+${YELLOW}Advanced:${NC}
+  --encode-type <TYPE>        Encoding type (url, double, html, base64, unicode)
+  --tamper <SCRIPT>           Apply tamper script to payload
+  --match <PATTERN>           Highlight matching response content
+  --grep <PATTERN>            Only show responses matching pattern
+  --save-req                  Save request details for replay
+  --replay <FILE>             Replay saved request
+  
+${YELLOW}Utilities:${NC}
+  --history                   Show command history
+  --clear-history             Clear command history
+  --export-config             Export current configuration
+  --import-config <FILE>      Import configuration
+  -h, --help                  Display this help message
+  --version                   Show version information
+
+${YELLOW}Examples:${NC}
+  ${GREEN}# Basic injection with persistent target${NC}
+  ecurl -t "https://target.com/api?id=" 
+  ecurl -i "1' OR '1'='1"
+
+  ${GREEN}# POST request with data${NC}
+  ecurl -X POST -d "username=admin&password=test" -i "' OR 1=1--"
+
+  ${GREEN}# Through Burp proxy with cookies${NC}
+  ecurl -p http://127.0.0.1:8080 -b "session=abc123" -i "../etc/passwd"
+
+  ${GREEN}# Batch testing with multiple encodings${NC}
+  ecurl --payload-file payloads.txt -c 2 --delay 1
+
+  ${GREEN}# JSON output for chaining${NC}
+  ecurl -i "test" --json | jq '.response.status'
+
+  ${GREEN}# Session management${NC}
+  ecurl --session pentest1 -j cookies.txt -i "admin"
+
+${YELLOW}Security Notice:${NC}
+  ${RED}⚠${NC}  For ${RED}authorized${NC} security testing only
+  ${RED}⚠${NC}  Always obtain written permission
+  ${RED}⚠${NC}  Logs are kept in ${HISTORY_FILE}
+
+${CYAN}GitHub:${NC} https://github.com/jaketcooper/ecurl
+
+EOM
+}
+
+version_info() {
+  cat <<EOM
+ecurl version 1.0.0
+Enhanced cURL for penetration testing
+Copyright (c) 2025 jaketcooper
+License: MIT
+EOM
+}
+
+# Logging function
+log_message() {
+  local level="$1"
+  shift
+  local message="$*"
+  
+  case "$level" in
+    ERROR)
+      echo -e "${RED}[ERROR]${NC} $message" >&2
+      ;;
+    WARNING)
+      echo -e "${YELLOW}[WARNING]${NC} $message" >&2
+      ;;
+    INFO)
+      if [[ "$quiet_mode" != "true" ]]; then
+        echo -e "${BLUE}[INFO]${NC} $message"
+      fi
+      ;;
+    SUCCESS)
+      if [[ "$quiet_mode" != "true" ]]; then
+        echo -e "${GREEN}[SUCCESS]${NC} $message"
+      fi
+      ;;
+    DEBUG)
+      if [[ "$verbose" == "true" ]]; then
+        echo -e "${CYAN}[DEBUG]${NC} $message"
+      fi
+      ;;
+  esac
+}
+
+# Error handling with exit codes
+error_exit() {
+  local message="$1"
+  local code="${2:-$E_GENERAL}"
+  log_message ERROR "$message"
+  exit "$code"
+}
+
+# Check dependencies
+check_dependencies() {
+  local missing_deps=()
+  
+  # Required dependencies
+  for cmd in curl perl jq; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing_deps+=("$cmd")
+    fi
+  done
+  
+  # Check Perl modules
+  if command -v perl &>/dev/null; then
+    if ! perl -MURI::Escape -e '' 2>/dev/null; then
+      missing_deps+=("perl-URI-Escape")
+    fi
+  fi
+  
+  if [[ ${#missing_deps[@]} -gt 0 ]]; then
+    error_exit "Missing dependencies: ${missing_deps[*]}\nInstall with: sudo apt-get install curl perl jq liburi-perl" "$E_MISSING_DEP"
+  fi
+}
+
+# URL encoding function
+url_encode() {
+  local string="$1"
+  local count="${2:-1}"
+  
+  for ((i=1; i<=count; i++)); do
+    string=$(echo -n "$string" | perl -MURI::Escape -lne 'print uri_escape($_)')
+    log_message DEBUG "Encoding pass $i: $(echo -n "$string" | cut -c1-60)$([ $(echo -n "$string" | wc -m) -gt 60 ] && echo '...')"
+  done
+  
+  echo "$string"
+}
+
+# Alternative encoding functions
+html_encode() {
+  local string="$1"
+  echo -n "$string" | sed -e 's/&/\&amp;/g' \
+                          -e 's/</\&lt;/g' \
+                          -e 's/>/\&gt;/g' \
+                          -e 's/"/\&quot;/g' \
+                          -e "s/'/\\&#39;/g"
+}
+
+base64_encode() {
+  local string="$1"
+  echo -n "$string" | base64 | tr -d '\n'
+}
+
+unicode_encode() {
+  local string="$1"
+  echo -n "$string" | perl -CS -pe 's/(.)/sprintf("\\u%04x", ord($1))/ge'
+}
+
+# Apply encoding based on type
+apply_encoding() {
+  local string="$1"
+  local type="$2"
+  local count="${3:-1}"
+  
+  case "$type" in
+    url|URL)
+      url_encode "$string" "$count"
+      ;;
+    double)
+      url_encode "$string" 2
+      ;;
+    html|HTML)
+      html_encode "$string"
+      ;;
+    base64|b64)
+      base64_encode "$string"
+      ;;
+    unicode|uni)
+      unicode_encode "$string"
+      ;;
+    *)
+      url_encode "$string" "$count"
+      ;;
+  esac
+}
+
+# Build curl command with all options (populates global array)
+build_curl_command() {
+  local url="$1"
+  # Clear and populate global array
+  curl_cmd_array=()
+  curl_cmd_array+=("curl")
+  
+  # Basic options
+  [[ "$insecure" == "true" ]] && curl_cmd_array+=("-k")
+  [[ "$follow_redirects" == "true" ]] && curl_cmd_array+=("-L" "--max-redirs" "10")
+  [[ "$include_headers" == "true" ]] && curl_cmd_array+=("-i")
+  
+  # Timeout
+  # Set --max-time to double the connect timeout to allow for slow responses after connection is established
+  curl_cmd_array+=("--connect-timeout" "$timeout" "--max-time" "$((timeout * 2))")
+  
+  # Method
+  [[ -n "$method" ]] && curl_cmd_array+=("-X" "$method")
+  
+  # Headers
+  for header in "${headers[@]}"; do
+    curl_cmd_array+=("-H" "$header")
+  done
+  
+  # User agent
+  if [[ -n "$user_agent" ]]; then
+    curl_cmd_array+=("-A" "$user_agent")
+  else
+    curl_cmd_array+=("-A" "$DEFAULT_USER_AGENT")
+  fi
+  
+  # POST/PUT data
+  for data in "${post_data[@]}"; do
+    curl_cmd_array+=("-d" "$data")
+  done
+  
+  # Proxy
+  # Check for explicit proxy setting first
+  if [[ -n "$proxy" ]]; then
+    curl_cmd_array+=("-x" "$proxy")
+    [[ -n "$proxy_auth" ]] && curl_cmd_array+=("--proxy-user" "$proxy_auth")
+  else
+    # If no explicit proxy, check environment variables
+    # Determine which proxy env var to use based on URL scheme
+    if [[ "$url" =~ ^https:// ]]; then
+      if [[ -n "${HTTPS_PROXY:-}" ]] || [[ -n "${https_proxy:-}" ]]; then
+        curl_cmd_array+=("-x" "${HTTPS_PROXY:-${https_proxy}}")
+      fi
+    elif [[ "$url" =~ ^http:// ]]; then
+      if [[ -n "${HTTP_PROXY:-}" ]] || [[ -n "${http_proxy:-}" ]]; then
+        curl_cmd_array+=("-x" "${HTTP_PROXY:-${http_proxy}}")
+      fi
+    fi
+    # Note: curl itself handles NO_PROXY, so we don't need to process it
+  fi
+  
+  # Cookies
+  if [[ -n "$cookie_data" ]]; then
+    curl_cmd_array+=("-b" "$cookie_data")
+  fi
+  
+  # Cookie jar
+  if [[ -n "$cookie_jar" ]]; then
+    curl_cmd_array+=("-c" "$cookie_jar" "-b" "$cookie_jar")
+  fi
+  
+  # Session management
+  if [[ -n "$session_name" ]]; then
+    # Sanitize session_name for safe filename usage
+    local safe_session_name
+    safe_session_name=$(echo "$session_name" | sed 's/[^a-zA-Z0-9._-]/_/g')
+    local session_cookie_file="${SESSION_FILE}.${safe_session_name}"
+    curl_cmd_array+=("-c" "$session_cookie_file" "-b" "$session_cookie_file")
+  fi
+  
+  # Client certificates
+  [[ -n "$cert_file" ]] && curl_cmd_array+=("--cert" "$cert_file")
+  [[ -n "$key_file" ]] && curl_cmd_array+=("--key" "$key_file")
+  
+  # Output options
+  if [[ "$json_output" == "true" ]]; then
+    # Generate delimiter once and store in global variable
+    ecurl_delimiter="===ECURL_META_$(date +%s%N)==="
+    local metadata_format="{\"url\":\"%{url_effective}\",\"status\":%{http_code},\"time\":%{time_total},\"size\":%{size_download}}"
+    curl_cmd_array+=("-w" "
+${ecurl_delimiter}
+${metadata_format}")
+    curl_cmd_array+=("-s")
+  elif [[ "$quiet_mode" == "true" ]]; then
+    curl_cmd_array+=("-s")
+  elif [[ "$verbose" == "true" ]]; then
+    curl_cmd_array+=("-v")
+  fi
+  
+  # Output file
+  [[ -n "$output_file" ]] && curl_cmd_array+=("-o" "$output_file")
+  
+  # Add URL
+  curl_cmd_array+=("$url")
+}
+
+# Execute curl with error handling
+execute_curl() {
+  # Note: expects curl_cmd_array to be populated by build_curl_command
+  local temp_file
+  temp_file=$(mktemp)
+  local exit_code
+  local response_file=""
+  
+  # Ensure cleanup on function exit
+  cleanup_temp() {
+    [[ -n "$temp_file" && -f "$temp_file" ]] && rm -f "$temp_file"
+    [[ -n "$response_file" && -f "$response_file" ]] && rm -f "$response_file"
+  }
+  
+  log_message DEBUG "Executing: ${curl_cmd_array[*]}"
+  
+  if [[ "$json_output" == "true" ]]; then
+    # Capture both response and metadata
+    local response
+    local response_body
+    local metadata
+    response_file=$(mktemp)
+    
+    # Use the delimiter that was set in build_curl_command
+    local delimiter="${ecurl_delimiter:-===ECURL_META_DEFAULT===}"
+    
+    "${curl_cmd_array[@]}" >"$response_file" 2>"$temp_file"
+    exit_code=$?
+    
+    if [[ $exit_code -eq 0 ]]; then
+      response=$(cat "$response_file")
+      rm -f "$response_file"
+      
+      # More robust extraction: split at the LAST occurrence of delimiter
+      # This handles cases where the response might contain our delimiter
+      if [[ "$response" == *"$delimiter"* ]]; then
+        # Get everything before the last delimiter occurrence
+        response_body="${response%${delimiter}*}"
+        # Get everything after the last delimiter occurrence  
+        metadata="${response#*${delimiter}}"
+        # Trim all trailing/leading newlines portably
+        response_body="$(echo "$response_body" | awk '{sub(/^[ \t\r\n]+/, ""); sub(/[ \t\r\n]+$/, "")}1')"
+        metadata="$(echo "$metadata" | awk '{sub(/^[ \t\r\n]+/, ""); sub(/[ \t\r\n]+$/, "")}1')"
+      else
+        # Fallback if delimiter not found (shouldn't happen)
+        response_body="$response"
+        metadata='{"url":"","status":0,"time":0,"size":0}'
+      fi
+      
+      # Validate metadata as JSON, fallback to default if invalid
+      if ! echo "$metadata" | jq empty 2>/dev/null; then
+        metadata='{"url":"","status":0,"time":0,"size":0}'
+      fi
+      
+      # Parse metadata through jq to ensure it's valid JSON
+      local validated_metadata
+      validated_metadata=$(echo "$metadata" | jq -c . 2>/dev/null) || validated_metadata='{"url":"","status":0,"time":0,"size":0}'
+      
+      # Build JSON output with safe field access
+      local safe_injection="${injection_text:-""}"
+      jq -n \
+        --arg response_b64 "$(echo -n "$response_body" | base64 | tr -d '\n')" \
+        --argjson metadata "$validated_metadata" \
+        --arg timestamp "$(date -Iseconds)" \
+        --arg payload "$safe_injection" \
+        '{
+          timestamp: $timestamp,
+          request: {
+            payload: $payload,
+            url: ($metadata.url // "")
+          },
+          response: {
+            status: ($metadata.status // 0),
+            time: ($metadata.time // 0),
+            size: ($metadata.size // 0),
+            body: ($response_b64 | @base64d)
+          }
+        }'
+    else
+      # Error JSON output
+      local safe_injection="${injection_text:-""}"
+      jq -n \
+        --arg error "$(cat "$temp_file")" \
+        --arg timestamp "$(date -Iseconds)" \
+        --arg payload "$safe_injection" \
+        '{
+          timestamp: $timestamp,
+          request: {
+            payload: $payload
+          },
+          error: $error
+        }'
+    fi
+    # Only remove if it still exists (might have been removed earlier)
+    [[ -f "$response_file" ]] && rm -f "$response_file"
+  else
+    "${curl_cmd_array[@]}" 2>"$temp_file"
+    exit_code=$?
+  fi
+  
+  # Handle curl errors
+  if [[ $exit_code -ne 0 ]]; then
+    local error_msg=$(cat "$temp_file")
+    
+    # Clean up before error exit
+    cleanup_temp
+    
+    case $exit_code in
+      6)
+        error_exit "Could not resolve host" "$E_CURL_ERROR"
+        ;;
+      7)
+        error_exit "Failed to connect to host" "$E_CURL_ERROR"
+        ;;
+      28)
+        error_exit "Request timeout exceeded" "$E_CURL_ERROR"
+        ;;
+      35)
+        error_exit "SSL/TLS connection error. Use -k to ignore certificate errors" "$E_CURL_ERROR"
+        ;;
+      *)
+        error_exit "Curl error (code $exit_code): $error_msg" "$E_CURL_ERROR"
+        ;;
+    esac
+  fi
+  
+  # Clean up temp file
+  cleanup_temp
+  return $exit_code
+}
+
+# Batch testing from file
+# Expects the target URL to already include any necessary query string or path for payload injection
+batch_test_payloads() {
+  local payload_file="$1"
+  local target="$2"  # Should end with = or / where payload will be appended
+  local delay="${3:-0}"
+  local encode_type="${4:-url}"
+  local encode_count="${5:-1}"
+  
+  if [[ ! -f "$payload_file" ]]; then
+    error_exit "Payload file not found: $payload_file" "$E_FILE_ERROR"
+  fi
+  
+  local count=0
+  local success=0
+  local failed=0
+  
+  log_message INFO "Starting batch testing from: $payload_file"
+  
+  while IFS= read -r payload || [[ -n "$payload" ]]; do
+    # Skip empty lines and comments
+    [[ -z "$payload" || "${payload:0:1}" == "#" ]] && continue
+    
+    count=$((count + 1))
+    log_message INFO "Testing payload $count: ${payload:0:50}..."
+    
+    # Encode payload
+    local encoded_payload
+    encoded_payload=$(apply_encoding "$payload" "$encode_type" "$encode_count")
+    
+    # Build and execute request
+    local full_url="${target}${encoded_payload}"
+    build_curl_command "$full_url"
+    
+    if execute_curl; then
+      success=$((success + 1))
+      log_message SUCCESS "Payload $count completed"
+    else
+      failed=$((failed + 1))
+      log_message WARNING "Payload $count failed"
+    fi
+    
+    # Delay between requests
+    [[ $delay -gt 0 ]] && sleep "$delay"
+    
+  done < "$payload_file"
+  
+  log_message INFO "Batch testing complete: $success successful, $failed failed out of $count total"
+}
+
+# Save request for replay
+save_request() {
+  local website_arg="$1"
+  local injection_arg="$2"
+  local request_file="${3:-ecurl_request_$(date +%s).req}"
+  local request_data
+  
+  request_data=$(jq -n \
+    --arg target "$website_arg" \
+    --arg injection "$injection_arg" \
+    --arg method "${method:-GET}" \
+    --argjson headers "$(if [[ ${#headers[@]} -gt 0 ]]; then printf '%s\n' "${headers[@]}" | jq -R . | jq -s .; else echo '[]'; fi)" \
+    --argjson data "$(if [[ ${#post_data[@]} -eq 0 ]]; then echo '[]'; else printf '%s\n' "${post_data[@]}" | jq -R . | jq -s .; fi)" \
+    --arg proxy "${proxy:-}" \
+    --arg cookie "${cookie_data:-}" \
+    '{
+      target: $target,
+      injection: $injection,
+      method: $method,
+      headers: $headers,
+      data: $data,
+      proxy: $proxy,
+      cookie: $cookie,
+      timestamp: now | strftime("%Y-%m-%dT%H:%M:%SZ")
+    }')
+  
+  echo "$request_data" > "$request_file"
+  log_message SUCCESS "Request saved to: $request_file"
+}
+
+# Replay saved request
+replay_request() {
+  local request_file="$1"
+  
+  if [[ ! -f "$request_file" ]]; then
+    error_exit "Request file not found: $request_file" "$E_FILE_ERROR"
+  fi
+  
+  # Parse saved request safely without eval
+  website=$(jq -r '.target' "$request_file")
+  injection_text=$(jq -r '.injection' "$request_file")
+  method=$(jq -r '.method' "$request_file")
+  proxy=$(jq -r '.proxy' "$request_file")
+  cookie_data=$(jq -r '.cookie' "$request_file")
+  
+  # Read headers and post_data as arrays
+  mapfile -t headers < <(jq -r '.headers[]?' "$request_file")
+  mapfile -t post_data < <(jq -r '.data[]?' "$request_file")
+  
+  log_message INFO "Replaying request from: $request_file"
+}
+
+# Command history management
+save_history() {
+  local cmd="$*"
+  echo "$(date -Iseconds) | $cmd" >> "$HISTORY_FILE"
+}
+
+show_history() {
+  if [[ -f "$HISTORY_FILE" ]]; then
+    log_message INFO "Command history:"
+    cat "$HISTORY_FILE" | tail -20
+  else
+    log_message INFO "No command history found"
+  fi
+}
+
+clear_history() {
+  if [[ -f "$HISTORY_FILE" ]]; then
+    rm -f "$HISTORY_FILE"
+    log_message SUCCESS "Command history cleared"
+  else
+    log_message INFO "No history to clear"
+  fi
+}
+
+# Configuration export/import
+export_config() {
+  local config_file="${1:-ecurl_config.json}"
+  
+  jq -n \
+    --arg target "$(cat "$TARGET_FILE" 2>/dev/null || echo "")" \
+    --arg proxy "${proxy:-}" \
+    --arg user_agent "${user_agent:-$DEFAULT_USER_AGENT}" \
+    --arg timeout "${timeout:-$DEFAULT_TIMEOUT}" \
+    '{
+      target: $target,
+      proxy: $proxy,
+      user_agent: $user_agent,
+      timeout: $timeout,
+      exported: now | strftime("%Y-%m-%dT%H:%M:%SZ")
+    }' > "$config_file"
+  
+  log_message SUCCESS "Configuration exported to: $config_file"
+}
+
+import_config() {
+  local config_file="$1"
+  
+  if [[ ! -f "$config_file" ]]; then
+    error_exit "Config file not found: $config_file" "$E_FILE_ERROR"
+  fi
+  
+  # Parse config safely without eval
+  target=$(jq -r '.target // ""' "$config_file")
+  proxy=$(jq -r '.proxy // ""' "$config_file") 
+  user_agent=$(jq -r '.user_agent // ""' "$config_file")
+  timeout=$(jq -r '.timeout // ""' "$config_file")
+  
+  # Validate timeout is numeric if present
+  if [[ -n "$timeout" ]] && ! [[ "$timeout" =~ ^[0-9]+$ ]]; then
+    error_exit "Invalid timeout value in config file" "$E_FILE_ERROR"
+  fi
+  
+  # Save target
+  if [[ -n "$target" ]]; then
+    if ! echo "$target" > "$TARGET_FILE"; then
+      error_exit "Failed to save target URL to $TARGET_FILE during config import" "$E_FILE_ERROR"
+    fi
+  fi
+  
+  log_message SUCCESS "Configuration imported from: $config_file"
+}
+
+# Main execution
+main() {
+  # Fail fast: check dependencies before anything else
+  check_dependencies
+
+  # Initialize variables
+  local target=""
+  local website=""
+  local injection_text=""
+  local encoded_injection=""
+  local encode_count=1
+  local encode_type="url"
+  local save_target=false
+  local show_only=false
+  local verbose=false
+  local quiet_mode=false
+  local json_output=false
+  local insecure=false
+  local follow_redirects=false
+  local include_headers=false
+  local method=""
+  local headers=()
+  local post_data=()
+  local user_agent=""
+  local proxy=""
+  local proxy_auth=""
+  local cookie_data=""
+  local cookie_jar=""
+  local session_name=""
+  local cert_file=""
+  local key_file=""
+  local output_file=""
+  local output_format="raw"
+  local timeout="$DEFAULT_TIMEOUT"
+  local payload_file=""
+  local target_list_file=""
+  local delay=0
+  local threads=1
+  local tamper_script=""
+  local match_pattern=""
+  local grep_pattern=""
+  local save_req=false
+  local replay_file=""
+  
+  # Store original args for history (before parsing consumes them)
+  local original_args=("$@")
+  
+  # Check for help/version first
+  if [[ "$#" -eq 0 ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    usage
+    exit $E_SUCCESS
+  fi
+  
+  if [[ "$1" == "--version" ]]; then
+    version_info
+    exit $E_SUCCESS
+  fi
+  
+  # Load saved target if exists
+  if [[ -f "$TARGET_FILE" ]]; then
+    target=$(cat "$TARGET_FILE" 2>/dev/null || echo "")
+  fi
+  
+  # Parse arguments
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      -t|--target)
+        shift
+        [[ -z "$1" ]] && error_exit "--target requires a URL argument" "$E_MISSING_ARG"
+        [[ "$1" == -* ]] && error_exit "--target requires a URL argument, but got option: $1" "$E_INVALID_ARG"
+        target="$1"
+        save_target=true
+        shift
+        ;;
+      -u|--url)
+        shift
+        [[ -z "$1" ]] && error_exit "--url requires a URL argument" "$E_MISSING_ARG"
+        [[ "$1" == -* ]] && error_exit "--url requires a URL argument, but got option: $1" "$E_INVALID_ARG"
+        website="$1"
+        shift
+        ;;
+      -i|--injection)
+        shift
+        [[ -z "$1" ]] && error_exit "--injection requires text argument" "$E_MISSING_ARG"
+        [[ "$1" == -* ]] && error_exit "--injection requires text argument, but got option: $1" "$E_INVALID_ARG"
+        injection_text="$1"
+        shift
+        ;;
+      -c|--count)
+        shift
+        [[ -z "$1" ]] || ! [[ "$1" =~ ^[1-9][0-9]*$ ]] && error_exit "--count requires a positive integer" "$E_INVALID_ARG"
+        encode_count="$1"
+        shift
+        ;;
+      -X|--method)
+        shift
+        [[ -z "$1" ]] && error_exit "--method requires a HTTP method" "$E_MISSING_ARG"
+        method="$1"
+        shift
+        ;;
+      -d|--data)
+        shift
+        [[ -z "$1" ]] && error_exit "--data requires data argument" "$E_MISSING_ARG"
+        post_data+=("$1")
+        shift
+        ;;
+      -H|--header)
+        shift
+        [[ -z "$1" ]] && error_exit "--header requires header string" "$E_MISSING_ARG"
+        headers+=("$1")
+        shift
+        ;;
+      -A|--user-agent)
+        shift
+        [[ -z "$1" ]] && error_exit "--user-agent requires string" "$E_MISSING_ARG"
+        user_agent="$1"
+        shift
+        ;;
+      -p|--proxy)
+        shift
+        [[ -z "$1" ]] && error_exit "--proxy requires URL" "$E_MISSING_ARG"
+        proxy="$1"
+        shift
+        ;;
+      --proxy-auth)
+        shift
+        [[ -z "$1" ]] && error_exit "--proxy-auth requires USER:PASS" "$E_MISSING_ARG"
+        proxy_auth="$1"
+        shift
+        ;;
+      -b|--cookie)
+        shift
+        [[ -z "$1" ]] && error_exit "--cookie requires data or file" "$E_MISSING_ARG"
+        cookie_data="$1"
+        shift
+        ;;
+      -j|--cookie-jar)
+        shift
+        [[ -z "$1" ]] && error_exit "--cookie-jar requires file path" "$E_MISSING_ARG"
+        cookie_jar="$1"
+        shift
+        ;;
+      --session)
+        shift
+        [[ -z "$1" ]] && error_exit "--session requires session name" "$E_MISSING_ARG"
+        session_name="$1"
+        shift
+        ;;
+      --cert)
+        shift
+        [[ -z "$1" ]] && error_exit "--cert requires certificate file" "$E_MISSING_ARG"
+        cert_file="$1"
+        shift
+        ;;
+      --key)
+        shift
+        [[ -z "$1" ]] && error_exit "--key requires key file" "$E_MISSING_ARG"
+        key_file="$1"
+        shift
+        ;;
+      -o|--output)
+        shift
+        [[ -z "$1" ]] && error_exit "--output requires file path" "$E_MISSING_ARG"
+        output_file="$1"
+        shift
+        ;;
+      -f|--format)
+        shift
+        [[ -z "$1" ]] && error_exit "--format requires format type" "$E_MISSING_ARG"
+        output_format="$1"
+        shift
+        ;;
+      --timeout)
+        shift
+        [[ -z "$1" ]] || ! [[ "$1" =~ ^[1-9][0-9]*$ ]] && error_exit "--timeout requires positive seconds" "$E_INVALID_ARG"
+        timeout="$1"
+        shift
+        ;;
+      --payload-file)
+        shift
+        [[ -z "$1" ]] && error_exit "--payload-file requires file path" "$E_MISSING_ARG"
+        payload_file="$1"
+        shift
+        ;;
+      --target-file)
+        shift
+        [[ -z "$1" ]] && error_exit "--target-file requires file path" "$E_MISSING_ARG"
+        target_list_file="$1"
+        shift
+        ;;
+      --delay)
+        shift
+        if [[ -z "$1" ]]; then
+          error_exit "--delay requires seconds value" "$E_MISSING_ARG"
+        elif [[ "$1" =~ ^-[0-9]+$ ]]; then
+          error_exit "--delay cannot be negative" "$E_INVALID_ARG"
+        elif ! [[ "$1" =~ ^[0-9]+$ ]]; then
+          error_exit "--delay requires non-negative integer seconds" "$E_INVALID_ARG"
+        fi
+        delay="$1"
+        shift
+        ;;
+      --encode-type)
+        shift
+        [[ -z "$1" ]] && error_exit "--encode-type requires type" "$E_MISSING_ARG"
+        encode_type="$1"
+        shift
+        ;;
+      --replay)
+        shift
+        [[ -z "$1" ]] && error_exit "--replay requires request file" "$E_MISSING_ARG"
+        replay_file="$1"
+        shift
+        ;;
+      -s|--show)
+        show_only=true
+        shift
+        ;;
+      -v|--verbose)
+        verbose=true
+        shift
+        ;;
+      -q|--quiet)
+        quiet_mode=true
+        shift
+        ;;
+      -k|--insecure)
+        insecure=true
+        shift
+        ;;
+      --json)
+        json_output=true
+        shift
+        ;;
+      --follow)
+        follow_redirects=true
+        shift
+        ;;
+      --include-headers)
+        include_headers=true
+        shift
+        ;;
+      --save-req)
+        save_req=true
+        shift
+        ;;
+      --clear-cookies)
+        # Remove default cookie jar
+        rm -f "$COOKIE_JAR"
+        # Remove default session files
+        shopt -s nullglob
+        session_files=("${SESSION_FILE}".*)
+        if [[ ${#session_files[@]} -gt 0 ]]; then
+          rm -f "${session_files[@]}"
+        fi
+        shopt -u nullglob
+        log_message SUCCESS "Cookies cleared"
+        exit $E_SUCCESS
+        ;;
+      --history)
+        show_history
+        exit $E_SUCCESS
+        ;;
+      --clear-history)
+        clear_history
+        exit $E_SUCCESS
+        ;;
+      --export-config)
+        shift
+        # If no argument is provided, use the default config file name
+        if [[ -z "$1" ]] || [[ "$1" == -* ]]; then
+          export_config
+        else
+          export_config "$1"
+          shift
+        fi
+        exit $E_SUCCESS
+        ;;
+      --import-config)
+        shift
+        [[ -z "$1" ]] && error_exit "--import-config requires file path" "$E_MISSING_ARG"
+        import_config "$1"
+        shift
+        ;;
+      -*)
+        error_exit "Unknown option: $1" "$E_INVALID_ARG"
+        ;;
+      *)
+        error_exit "Unexpected argument: $1" "$E_INVALID_ARG"
+        ;;
+    esac
+  done
+
+  # Redact sensitive arguments before saving to history
+  local redacted_args=()
+  local skip_next=false
+  # Separate sensitive options for clarity
+  local sensitive_long_opts=(--proxy-auth --cookie --cookie-jar --cert --key --import-config --export-config --payload-file --target-file --replay)
+  local sensitive_short_opts=(-b -j)
+  # Only these short options can take arguments and are sensitive
+  local sensitive_short_letters="bj"
+  
+  for ((i=0; i<${#original_args[@]}; i++)); do
+    arg="${original_args[$i]}"
+    if $skip_next; then
+      redacted_args+=("[REDACTED]")
+      skip_next=false
+      continue
+    fi
+    
+    # Check for long sensitive options and --option=value form
+    local redacted=false
+    for opt in "${sensitive_long_opts[@]}"; do
+      if [[ "$arg" == "$opt" ]]; then
+        skip_next=true
+        redacted_args+=("$arg")
+        redacted=true
+        break
+      elif [[ "$arg" == $opt=* ]]; then
+        redacted_args+=("$opt=[REDACTED]")
+        redacted=true
+        break
+      fi
+    done
+    if $redacted; then
+      continue
+    fi
+    
+    # Check for short sensitive options (e.g., -b, -j)
+    for opt in "${sensitive_short_opts[@]}"; do
+      if [[ "$arg" == "$opt" ]]; then
+        skip_next=true
+        redacted_args+=("$arg")
+        redacted=true
+        break
+      fi
+    done
+    if $redacted; then
+      continue
+    fi
+    
+    # Handle combined short options (e.g., -jb file)
+    # Only the last letter in the group can take an argument
+    if [[ "$arg" =~ ^-([a-zA-Z0-9]{2,})$ ]]; then
+      local split_opts="${BASH_REMATCH[1]}"
+      local last_opt="${split_opts: -1}"
+      if [[ "$sensitive_short_letters" == *"$last_opt"* ]]; then
+        skip_next=true
+      fi
+      redacted_args+=("$arg")
+    else
+      redacted_args+=("$arg")
+    fi
+  done
+  save_history "$0" "${redacted_args[@]}"
+  
+  # Handle target saving
+  if [[ "$save_target" == "true" ]]; then
+    if ! echo "$target" > "$TARGET_FILE"; then
+      error_exit "Failed to save target URL to $TARGET_FILE" "$E_FILE_ERROR"
+    fi
+    log_message SUCCESS "Target URL saved: $target"
+    exit $E_SUCCESS
+  fi
+  
+  # Handle replay
+  if [[ -n "$replay_file" ]]; then
+    replay_request "$replay_file"
+  fi
+  
+  # Handle batch payload testing
+  if [[ -n "$payload_file" ]]; then
+    # Determine target
+    if [[ -z "$website" ]]; then
+      website="$target"
+    fi
+    
+    if [[ -z "$website" ]]; then
+      error_exit "No target URL specified for batch testing" "$E_MISSING_ARG"
+    fi
+    
+    batch_test_payloads "$payload_file" "$website" "$delay" "$encode_type" "$encode_count"
+    exit $E_SUCCESS
+  fi
+  
+  # Validate injection text for normal operation
+  if [[ -z "$injection_text" ]]; then
+    error_exit "Missing injection text (-i/--injection)" "$E_MISSING_ARG"
+  fi
+  
+  # Encode injection (preserve original)
+  log_message DEBUG "Original payload: $injection_text"
+  log_message DEBUG "Encoding type: $encode_type ($encode_count passes)"
+  
+  encoded_injection=$(apply_encoding "$injection_text" "$encode_type" "$encode_count")
+  
+  # Show-only mode
+  if [[ "$show_only" == "true" ]]; then
+    log_message SUCCESS "Encoded payload:"
+    echo "$encoded_injection"
+    exit $E_SUCCESS
+  fi
+  
+  # Determine target URL
+  if [[ -z "$website" ]]; then
+    website="$target"
+  fi
+  
+  if [[ -z "$website" ]]; then
+    # No target, just output encoded payload
+    if [[ "$quiet_mode" != "true" ]]; then
+      log_message WARNING "No target URL specified. Only the encoded payload will be output."
+    fi
+    echo "$encoded_injection"
+    exit $E_SUCCESS
+  fi
+  
+  # Build full URL
+  local full_url="${website}${encoded_injection}"
+  
+  # Verbose output
+  log_message DEBUG "Target URL: $website"
+  log_message DEBUG "Full URL: ${full_url:0:100}$([ ${#full_url} -gt 100 ] && echo '...')"
+  
+  # Save request if requested
+  if [[ "$save_req" == "true" ]]; then
+    save_request "$website" "$injection_text"
+  fi
+  
+  # Build and execute curl command
+  # Global array curl_cmd_array will be populated
+  build_curl_command "$full_url"
+  
+  log_message INFO "Sending request..."
+  
+  execute_curl
+  local exit_code=$?
+  
+  if [[ $exit_code -eq 0 ]]; then
+    [[ "$quiet_mode" != "true" ]] && [[ "$json_output" != "true" ]] && echo
+    log_message SUCCESS "Request completed successfully"
+  fi
+  
+  exit $exit_code
+}
+
+# Run main function
+main "$@"

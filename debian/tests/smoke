@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 1) --help prints something with "ecurl" in it
+ecurl --help | head -n 3 | grep -qi ecurl
+
+# 2) manpage is installed and findable
+man -w ecurl >/dev/null 2>&1
+
+# 3) key docs are installed (README, SECURITY, TECHNICAL, PACKAGING)
+DOC=/usr/share/doc/ecurl
+[ -d "$DOC" ]
+ls "$DOC" | grep -E -q 'README\.md\.gz|README\.md'
+ls "$DOC" | grep -E -q 'SECURITY\.md(\.gz)?'
+ls "$DOC" | grep -E -q 'TECHNICAL\.md\.gz|TECHNICAL\.md'
+ls "$DOC" | grep -E -q 'PACKAGING\.md(\.gz)?'

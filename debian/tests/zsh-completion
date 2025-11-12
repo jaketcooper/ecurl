@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Only run if the _ecurl function is installed. Otherwise treat as superficial pass.
+ZDOTDIR="$(mktemp -d)"
+trap 'rm -rf "$ZDOTDIR"' EXIT
+
+cat >"$ZDOTDIR/.zshrc" <<'RC'
+autoload -Uz compinit
+compinit
+whence -w _ecurl >/dev/null 2>&1 || exit 0
+# Try to load it and complete a stub line
+_ecurl 2>/dev/null || true
+RC
+
+zsh -f +Z -o no_aliases -c "ZDOTDIR=$ZDOTDIR; . $ZDOTDIR/.zshrc; echo ok"

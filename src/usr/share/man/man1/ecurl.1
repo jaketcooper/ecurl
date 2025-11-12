@@ -1,0 +1,163 @@
+.\" Manpage for ecurl
+.TH ecurl 1 "2025-11-12" "ecurl 1.0.0" "User Commands"
+.SH NAME
+ecurl \- Encoded cURL for penetration testing
+.SH SYNOPSIS
+.B ecurl
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+\fBecurl\fR is a small POSIX-compatible wrapper around \fBcurl\fR that
+applies common encodings (URL, double-URL, HTML, Base64, Unicode) to
+injection payloads and offers helper features useful during authorized
+penetration testing: session/cookie management, batch payload testing,
+tamper hooks, JSON metadata output, and simple history management.
+
+The tool is intended for \fIauthorized security testing only\fR. Always
+obtain written permission before testing systems you do not own.
+
+.SH OPTIONS
+The options below are the key flags supported by ecurl. Use \fB--help\fR
+or run without arguments to see the full, colorized interactive help.
+
+.TP
+.B -t, --target <URL>
+Set a persistent target URL. Saved to \fI~/.ecurl_target\fR when used.
+.TP
+.B -u, --url <URL>
+One-time target URL (does not persist).
+.TP
+.B -i, --injection <TEXT>
+Payload to encode and send. Required for normal operation.
+.TP
+.B -c, --count <N>
+Number of encoding passes (default: 1).
+.TP
+.B -X, --method <METHOD>
+HTTP method (GET, POST, PUT, DELETE, ...).
+.TP
+.B -d, --data <DATA>
+POST/PUT data. May be given multiple times.
+.TP
+.B -H, --header <HEADER>
+Custom header. May be given multiple times.
+.TP
+.B -A, --user-agent <STRING>
+Set User-Agent header.
+.TP
+.B --encode-type <TYPE>
+Encoding type: \fIurl\fR (default), \fIdouble\fR, \fIhtml\fR, \fIbase64\fR, \fIunicode\fR.
+.TP
+.B --payload-file <FILE>
+Run batch testing using each line in \fIFILE\fR as a payload.
+.TP
+.B --json
+Emit structured JSON metadata and base64-encoded response body for chaining.
+.TP
+.B -s, --show
+Show the encoded payload without sending the request.
+.TP
+.B --session <NAME>
+Named session for cookie persistence (saved under \fI~/.ecurl_session.<NAME>\fR).
+.TP
+.B --clear-cookies
+Clear stored cookie jar and session files.
+.TP
+.B --history
+Show recent command history (stored in \fI~/.ecurl_history\fR).
+.TP
+.B --export-config
+Export current configuration to a JSON file.
+.TP
+.B -h, --help
+Show help and exit.
+.TP
+.B --version
+Show version information and exit.
+
+.SH EXIT STATUS
+The program returns standard exit status codes:
+.IP
+\(bu 8
+0  Success
+.IP
+\(bu 8
+1  General error
+.IP
+\(bu 8
+2  Missing argument
+.IP
+\(bu 8
+3  Invalid argument
+.IP
+\(bu 8
+4  Missing dependency
+.IP
+\(bu 8
+5  cURL error
+.IP
+\(bu 8
+6  File error
+
+.SH FILES
+.TP
+.I ~/.ecurl_target
+Persistent target URL (optional).
+.TP
+.I ~/.ecurl_cookies
+Default cookie jar.
+.TP
+.I ~/.ecurl_session.*
+Named session cookie files.
+.TP
+.I ~/.ecurl_history
+Command history and logs of recent invocations.
+
+.SH ENVIRONMENT
+.TP
+.B NO_COLOR
+If set (non-empty), disables colored output.
+.TP
+.B PATH
+Relies on \fBcurl\fR, \fBperl\fR, and \fBjq\fR being available in PATH.
+
+.SH EXAMPLES
+.TP
+Run a quick URL-encoded injection against a saved target:
+.RS
+.nf
+ecurl -t "https://target.example.com/vuln?id=" 
+ecurl -i "1' OR '1'='1"
+.fi
+.RE
+.TP
+Run a POST with an encoded payload through an HTTP proxy:
+.RS
+.nf
+ecurl -u "https://target/api?input=" -X POST -d "username=admin" -p http://127.0.0.1:8080 -i "' OR 1=1--"
+.fi
+.RE
+.TP
+Show the encoded payload without sending:
+.RS
+.nf
+ecurl -i "<script>alert(1)</script>" -c 2 -s
+.fi
+.RE
+
+.SH SECURITY AND RESPONSIBILITY
+\fBecurl\fR is designed for use in penetration testing and red-team engagements.
+Always obtain explicit authorization in writing from the resource owner before
+running tests. Misuse of this tool against systems without permission is a
+violation of law and ethics.
+
+.SH BUGS
+Report issues and feature requests at:
+https://github.com/jaketcooper/ecurl/issues
+
+.SH COPYRIGHT AND LICENSE
+Copyright © 2025 jaketcooper
+Licensed under the MIT License. See the project repository for the full license text.
+
+.SH AUTHORS
+Written and maintained by jaketcooper <https://github.com/jaketcooper>.
+

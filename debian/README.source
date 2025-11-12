@@ -1,0 +1,49 @@
+ecurl – Source package notes
+
+Format: 3.0 (quilt)
+Patches: managed with quilt (dpkg-source --commit creates debian/patches/*).
+
+Upstream layout
+---------------
+The upstream tarball contains:
+  ecurl-<ver>/
+    ├── src
+    │   └── usr
+    │       ├── bin
+    │       │   └── ecurl
+    │       └── share
+    │           └── man
+    │               └── man1
+    │                   └── ecurl.1
+    ├── README.md 
+    ├── PACKAGING.md 
+    ├── SECURITY.md 
+    ├── TECHNICAL.md 
+    ├── LICENSE
+    └── (optional: CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md)
+
+This matches the VCS layout where packaging lives under debian/ and
+runtime files live under src/.
+
+(Re)generating the orig tarball
+-------------------------------
+From the repository root:
+
+  VER=X.Y.Z
+  STAGE=/tmp/ecurl-$VER
+  rm -rf "$STAGE" && mkdir -p "$STAGE/ecurl-$VER"
+  rsync -a src/ "$STAGE/ecurl-$VER/src/"
+  cp -a README.md PACKAGING.md SECURITY.md TECHNICAL.md LICENSE \
+        "$STAGE/ecurl-$VER/"
+  # optional extras:
+  cp -a CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md "$STAGE/ecurl-$VER/" || true
+  tar -C "$STAGE" -cJf ../ecurl_${VER}.orig.tar.xz ecurl-${VER}
+
+Uscan/watch
+-----------
+Once releases are on GitHub, uscan (debian/watch) can fetch new versions
+from tags. See debian/watch for the pattern and uversionmangle that strips
+a leading 'v' from tag names.
+
+Rules-Requires-Root: no
+No special build steps required; debhelper installs files from src/.

@@ -1,0 +1,3 @@
+src/usr/bin/ecurl usr/bin/
+debian/completion/ecurl usr/share/bash-completion/completions/
+debian/zsh/_ecurl usr/share/zsh/vendor-completions/

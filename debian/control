@@ -1,0 +1,23 @@
+Source: ecurl
+Section: utils
+Priority: optional
+Maintainer: Jake Cooper <jaketcooper@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/jaketcooper/ecurl
+Vcs-Git: https://github.com/jaketcooper/ecurl.git
+Vcs-Browser: https://github.com/jaketcooper/ecurl
+
+Package: ecurl
+Architecture: all
+Depends: ${misc:Depends}, curl, perl, jq, liburi-perl, mawk | gawk
+Suggests: dnsutils
+Enhances: bash-completion, zsh
+Description: Encoded cURL wrapper for penetration testing
+ ecurl is a lightweight shell wrapper around curl designed to simplify
+ testing of input encoding and injection payloads during authorized
+ penetration tests. It provides multiple encoding strategies (URL,
+ double URL, HTML, Base64, Unicode), session/cookie management,
+ batch payload testing, JSON metadata output for tool-chaining and a
+ simple command history. For authorized security testing only.

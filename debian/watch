@@ -1,0 +1,6 @@
+version=4
+opts=\
+  uversionmangle=s/^v//,\
+  filenamemangle=s%.*v?(@ANY_VERSION@)\.tar\.gz%ecurl-$1.tar.gz% \
+  https://github.com/jaketcooper/ecurl/tags \
+  .*/archive/refs/tags/v?(@ANY_VERSION@)\.tar\.gz

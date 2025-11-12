@@ -1,0 +1,76 @@
+# bash completion for ecurl
+# Installed to: /usr/share/bash-completion/completions/ecurl
+
+_ecurl()
+{
+    local cur prev words cword
+    _init_completion -n : || return
+
+    # Options (long + short) — keep in lexicographic order for readability.
+    local -a opts=(
+        -A --user-agent
+        -H --header
+        -X --method
+        -b --cookie
+        -c --count
+        -d --data
+        -f --format
+        -h --help
+        -i --injection
+        -j --cookie-jar
+        -k --insecure
+        -o --output
+        -p --proxy
+        -q --quiet
+        -s --show
+        -t --target
+        -u --url
+        -v --verbose
+        --cert
+        --clear-cookies
+        --delay
+        --encode-type
+        --export-config
+        --follow
+        --grep
+        --import-config
+        --include-headers
+        --json
+        --key
+        --match
+        --payload-file
+        --proxy-auth
+        --replay
+        --save-req
+        --save-req
+        --session
+        --target-file
+        --timeout
+        --version
+    )
+
+    # Options that expect a value (to help file/url completion)
+    case "$prev" in
+        -A|--user-agent|-H|--header|-X|--method|-c|--count|-f|--format|--encode-type|--delay|--match|--grep|--timeout|--proxy-auth|--session)
+            return 0
+            ;;
+        -b|--cookie|-j|--cookie-jar|--cert|--key|-o|--output|--payload-file|--target-file|--replay|--export-config|--import-config)
+            _filedir
+            return 0
+            ;;
+        -t|--target|-u|--url|-p|--proxy)
+            # Let the user type arbitrary URLs; no special completion
+            return 0
+            ;;
+    esac
+
+    # If completing a new word, suggest options; otherwise fall back to files.
+    if [[ $cur == -* ]]; then
+        COMPREPLY=( $(compgen -W "${opts[*]}" -- "$cur") )
+    else
+        _filedir
+    fi
+}
+
+# Hook
+complete -F _ecurl ecurl

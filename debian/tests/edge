@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+# Missing -i returns exit code 2 (E_MISSING_ARG)
+set +e
+ecurl -u "http://127.0.0.1:1/x?y=" >/dev/null 2>&1
+rc=$?
+set -e
+[ $rc -eq 2 ]

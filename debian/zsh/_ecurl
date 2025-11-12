@@ -1,0 +1,51 @@
+#compdef ecurl
+# Zsh completion for ecurl
+
+_ecurl() {
+  local -a opts
+  opts=(
+    '-A[Set custom User-Agent string]'
+    '--user-agent[Set custom User-Agent string]'
+    '-H[Add HTTP header]'
+    '--header[Add HTTP header]'
+    '-X[Specify HTTP method]'
+    '--method[Specify HTTP method]'
+    '-b[Read cookies from file]'
+    '--cookie[Read cookies from file]'
+    '-j[Write cookies to file]'
+    '--cookie-jar[Write cookies to file]'
+    '--session[Use or create named session]'
+    '--target[Set base target URL]'
+    '--timeout[Request timeout in seconds]'
+    '--json[Output JSON summary]'
+    '--encode-type[Encoding mode: url, base64, hex]'
+    '--proxy[Set proxy URL]'
+    '--proxy-auth[Proxy authentication]'
+    '--insecure[Allow insecure TLS]'
+    '--payload-file[Read payload data from file]'
+    '--target-file[File containing list of targets]'
+    '--save-req[Save last request to file]'
+    '--follow[Follow redirects]'
+    '--clear-cookies[Clear all session cookies]'
+    '-h[Show help]'
+    '--help[Show help]'
+    '-v[Verbose mode]'
+    '--version[Show version]'
+  )
+
+  _arguments \
+    '*::args:->args' \
+    "$opts[@]"
+
+  case $state in
+    args)
+      if [[ $words[-1] == -* ]]; then
+        _describe -t options 'ecurl options' opts
+      else
+        _files
+      fi
+      ;;
+  esac
+}
+
+_ecurl "$@"
