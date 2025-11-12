@@ -11,7 +11,7 @@
 
 ## 🔍 Overview
 **ecurl** is an encoded wrapper around [`curl`](https://curl.se/) for **authorized penetration testing** and **security automation**.  
-It simplifies payload encoding, session persistence, batch payload testing, and JSON-based chaining — all while keeping full `curl` flexibility.
+It simplifies payload encoding, session persistence, batch payload testing, and JSON-based chaining — all while keeping full `curl` flexibility. _(just add an 'e'!)_
 
 The tool is lightweight, self-contained (Bash), and tested under **Debian**, **Ubuntu**, and **Kali Linux**.
 
