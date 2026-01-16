@@ -1,3 +1,19 @@
+ecurl (1.0.1-4) UNRELEASED; urgency=medium
+
+  * Drop explicit dependency on bash (Essential package).
+  * Drop redundant Testsuite field (autopkgtest is implied).
+  * Lintian cleanup: drop redundant autopkgtest field; remove bash
+    dependency.
+
+ -- Q <jaketcooper@pm.me>  Fri, 16 Jan 2026 16:29:56 -0500
+
+ecurl (1.0.1-1) kali-rolling; urgency=medium
+
+  * Latest upstream release.
+  * Latest upstream release.
+
+ -- Q <jaketcooper@pm.me>  Fri, 16 Jan 2026 16:20:37 -0500
+
 ecurl (1.0.0-1) unstable; urgency=medium
 
   * Initial release.

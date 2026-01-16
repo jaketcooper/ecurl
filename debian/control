@@ -8,11 +8,10 @@ Rules-Requires-Root: no
 Homepage: https://github.com/jaketcooper/ecurl
 Vcs-Git: https://github.com/jaketcooper/ecurl.git
 Vcs-Browser: https://github.com/jaketcooper/ecurl
-Testsuite: autopkgtest
 
 Package: ecurl
 Architecture: all
-Depends: ${misc:Depends}, bash, curl, perl, jq, liburi-perl, mawk | gawk
+Depends: ${misc:Depends}, curl, perl, jq, liburi-perl, mawk | gawk
 Suggests: bind9-dnsutils | dnsutils
 Enhances: bash-completion, zsh
 Description: Encoded cURL wrapper for penetration testing

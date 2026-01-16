@@ -4,6 +4,8 @@ debian/debhelper-build-stamp
 debian/ecurl/
 debian/ecurl.substvars
 debian/files
+debian/*.log
+debian/*.debhelper
 
 # Package outputs (parent directory)
 ../*.deb
