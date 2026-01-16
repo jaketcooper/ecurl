@@ -1,6 +1,6 @@
 # ecurl — Encoded cURL for Penetration Testing
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.1-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Shell](https://img.shields.io/badge/language-bash-blue.svg)
 ![Status](https://img.shields.io/badge/build-passing-brightgreen.svg)
